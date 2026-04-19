@@ -132,7 +132,7 @@ class NHSBot(commands.Bot):
         await self.message_queue.put((channel, kwargs))
 
 
-bot = NHSBot()
+bot: NHSBot | None = None
 
 
 def verification_embed() -> discord.Embed:
@@ -221,7 +221,9 @@ def build_action_embed(title: str, description: str, reason: str) -> discord.Emb
 
 
 def get_guild_bot_member(guild: discord.Guild) -> discord.Member | None:
-    return guild.me or guild.get_member(bot.user.id if bot.user else 0)
+    if bot is None or bot.user is None:
+        return guild.me
+    return guild.me or guild.get_member(bot.user.id)
 
 
 def moderation_dm_embed(
@@ -284,13 +286,13 @@ async def ensure_verification_message() -> None:
     logger.info("Posted verification message in #%s.", channel.name)
 
 
-@bot.event
 async def on_ready() -> None:
+    if bot is None or bot.user is None:
+        return
     logger.info("Logged in as %s (%s)", bot.user, bot.user.id)
     await ensure_verification_message()
 
 
-@bot.event
 async def on_member_join(member: discord.Member) -> None:
     channel = member.guild.get_channel(WELCOME_CHANNEL_ID)
     if channel is None:
@@ -307,7 +309,6 @@ async def on_member_join(member: discord.Member) -> None:
     await bot.queue_message(channel, embed=welcome_embed(member))
 
 
-@bot.tree.command(name="verification", description="Send the verification embed again.")
 @app_commands.default_permissions(manage_guild=True)
 async def verification(interaction: discord.Interaction) -> None:
     if interaction.channel is None:
@@ -324,7 +325,6 @@ async def verification(interaction: discord.Interaction) -> None:
     )
 
 
-@bot.tree.command(name="kick", description="Kick a member from the server.")
 @app_commands.describe(member="Member to kick", reason="Reason for the kick")
 @app_commands.default_permissions(kick_members=True)
 async def kick_member(
@@ -386,7 +386,6 @@ async def kick_member(
     )
 
 
-@bot.tree.command(name="ban", description="Ban a member from the server.")
 @app_commands.describe(member="Member to ban", reason="Reason for the ban")
 @app_commands.default_permissions(ban_members=True)
 async def ban_member(
@@ -452,12 +451,32 @@ if not TOKEN:
     raise RuntimeError("DISCORD_TOKEN is missing. Add it to your .env file.")
 
 
+def create_bot() -> NHSBot:
+    new_bot = NHSBot()
+    new_bot.event(on_ready)
+    new_bot.event(on_member_join)
+    new_bot.tree.command(
+        name="verification",
+        description="Send the verification embed again.",
+    )(verification)
+    new_bot.tree.command(
+        name="kick",
+        description="Kick a member from the server.",
+    )(kick_member)
+    new_bot.tree.command(
+        name="ban",
+        description="Ban a member from the server.",
+    )(ban_member)
+    return new_bot
+
+
 async def run_bot_forever() -> None:
+    global bot
     backoff = 15
     while True:
         try:
-            async with bot:
-                await bot.start(TOKEN)
+            bot = create_bot()
+            await bot.start(TOKEN)
             return
         except discord.HTTPException as exc:
             logger.error("Discord login failed with HTTP %s: %s", exc.status, exc)
@@ -466,6 +485,10 @@ async def run_bot_forever() -> None:
             raise
         except Exception:
             logger.exception("Bot crashed unexpectedly during startup/runtime.")
+        finally:
+            if bot is not None:
+                await bot.close()
+                bot = None
 
         logger.warning("Retrying Discord connection in %s seconds.", backoff)
         await asyncio.sleep(backoff)
