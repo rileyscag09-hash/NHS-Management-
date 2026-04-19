@@ -452,5 +452,25 @@ if not TOKEN:
     raise RuntimeError("DISCORD_TOKEN is missing. Add it to your .env file.")
 
 
+async def run_bot_forever() -> None:
+    backoff = 15
+    while True:
+        try:
+            async with bot:
+                await bot.start(TOKEN)
+            return
+        except discord.HTTPException as exc:
+            logger.error("Discord login failed with HTTP %s: %s", exc.status, exc)
+        except discord.LoginFailure as exc:
+            logger.error("Discord login failed: %s", exc)
+            raise
+        except Exception:
+            logger.exception("Bot crashed unexpectedly during startup/runtime.")
+
+        logger.warning("Retrying Discord connection in %s seconds.", backoff)
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 2, 300)
+
+
 threading.Thread(target=start_healthcheck_server, daemon=True).start()
-bot.run(TOKEN)
+asyncio.run(run_bot_forever())
