@@ -39,6 +39,11 @@ logging.basicConfig(
 logger = logging.getLogger("nhs-bot")
 
 
+def is_cloudflare_rate_limit_error(exc: discord.HTTPException) -> bool:
+    response_text = str(exc)
+    return exc.status == 429 and ("Error 1015" in response_text or "Cloudflare" in response_text)
+
+
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         self.send_response(200)
@@ -480,6 +485,12 @@ async def run_bot_forever() -> None:
             return
         except discord.HTTPException as exc:
             logger.error("Discord login failed with HTTP %s: %s", exc.status, exc)
+            if is_cloudflare_rate_limit_error(exc):
+                backoff = max(backoff, 900)
+                logger.error(
+                    "Discord is blocking this host IP via Cloudflare 1015. "
+                    "This is an infrastructure issue with the current host, not your bot token or commands."
+                )
         except discord.LoginFailure as exc:
             logger.error("Discord login failed: %s", exc)
             raise
