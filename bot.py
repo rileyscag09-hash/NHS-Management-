@@ -1,6 +1,7 @@
 import logging
 import os
 import threading
+import asyncio
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -79,9 +80,13 @@ class NHSBot(commands.Bot):
             intents=intents,
             help_command=None,
         )
+        self.message_queue: asyncio.Queue[tuple[discord.abc.Messageable, dict]] = asyncio.Queue()
+        self.message_worker: asyncio.Task | None = None
+        self.verification_message_checked = False
 
     async def setup_hook(self) -> None:
         self.add_view(VerificationView())
+        self.message_worker = asyncio.create_task(self.process_message_queue())
 
         if GUILD_ID:
             guild = discord.Object(id=GUILD_ID)
@@ -91,6 +96,40 @@ class NHSBot(commands.Bot):
         else:
             synced = await self.tree.sync()
             logger.info("Synced %s global commands.", len(synced))
+
+    async def process_message_queue(self) -> None:
+        while True:
+            channel, kwargs = await self.message_queue.get()
+            try:
+                await self.send_with_backoff(channel, **kwargs)
+                await asyncio.sleep(1.25)
+            finally:
+                self.message_queue.task_done()
+
+    async def send_with_backoff(self, channel: discord.abc.Messageable, **kwargs) -> discord.Message | None:
+        delay = 2.0
+        for attempt in range(4):
+            try:
+                return await channel.send(**kwargs)
+            except discord.HTTPException as exc:
+                is_retryable = exc.status == 429 or 500 <= exc.status < 600
+                if not is_retryable or attempt == 3:
+                    logger.warning("Failed to send message after %s attempt(s): %s", attempt + 1, exc)
+                    return None
+
+                retry_after = getattr(exc, "retry_after", None)
+                wait_time = retry_after if retry_after is not None else delay
+                logger.warning(
+                    "Discord rate limit/server error while sending message. Retrying in %.2fs.",
+                    wait_time,
+                )
+                await asyncio.sleep(wait_time)
+                delay *= 2
+
+        return None
+
+    async def queue_message(self, channel: discord.abc.Messageable, **kwargs) -> None:
+        await self.message_queue.put((channel, kwargs))
 
 
 bot = NHSBot()
@@ -213,6 +252,9 @@ def moderation_dm_embed(
 
 
 async def ensure_verification_message() -> None:
+    if bot.verification_message_checked:
+        return
+
     channel = bot.get_channel(VERIFICATION_CHANNEL_ID)
     if channel is None:
         try:
@@ -232,11 +274,13 @@ async def ensure_verification_message() -> None:
                 and message.embeds
                 and message.embeds[0].title == "🛡️ Community Verification & Whitelist"
             ):
+                bot.verification_message_checked = True
                 return
     except discord.DiscordException as exc:
         logger.warning("Could not inspect verification channel history: %s", exc)
 
-    await channel.send(embed=verification_embed(), view=VerificationView())
+    await bot.queue_message(channel, embed=verification_embed(), view=VerificationView())
+    bot.verification_message_checked = True
     logger.info("Posted verification message in #%s.", channel.name)
 
 
@@ -260,7 +304,7 @@ async def on_member_join(member: discord.Member) -> None:
         logger.warning("Welcome channel is not a text channel.")
         return
 
-    await channel.send(embed=welcome_embed(member))
+    await bot.queue_message(channel, embed=welcome_embed(member))
 
 
 @bot.tree.command(name="verification", description="Send the verification embed again.")
@@ -273,7 +317,7 @@ async def verification(interaction: discord.Interaction) -> None:
         )
         return
 
-    await interaction.channel.send(embed=verification_embed(), view=VerificationView())
+    await bot.queue_message(interaction.channel, embed=verification_embed(), view=VerificationView())
     await interaction.response.send_message(
         "Verification message sent.",
         ephemeral=True,
