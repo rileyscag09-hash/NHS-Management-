@@ -44,6 +44,11 @@ def is_cloudflare_rate_limit_error(exc: discord.HTTPException) -> bool:
     return exc.status == 429 and ("Error 1015" in response_text or "Cloudflare" in response_text)
 
 
+def is_global_login_rate_limit_error(exc: discord.HTTPException) -> bool:
+    response_text = str(exc)
+    return exc.status == 429 and "exceeding global rate limits" in response_text
+
+
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         self.send_response(200)
@@ -79,6 +84,7 @@ class NHSBot(commands.Bot):
         intents = discord.Intents.default()
         intents.members = True
         intents.guilds = True
+        intents.message_content = True
 
         super().__init__(
             command_prefix="!",
@@ -491,6 +497,12 @@ async def run_bot_forever() -> None:
                     "Discord is blocking this host IP via Cloudflare 1015. "
                     "This is an infrastructure issue with the current host, not your bot token or commands."
                 )
+            elif is_global_login_rate_limit_error(exc):
+                backoff = max(backoff, 1800)
+                logger.error(
+                    "Discord is temporarily blocking login from this host due to global rate limits. "
+                    "This is a hosting/IP-level issue rather than a bug in the bot commands."
+                )
         except discord.LoginFailure as exc:
             logger.error("Discord login failed: %s", exc)
             raise
@@ -503,7 +515,7 @@ async def run_bot_forever() -> None:
 
         logger.warning("Retrying Discord connection in %s seconds.", backoff)
         await asyncio.sleep(backoff)
-        backoff = min(backoff * 2, 300)
+        backoff = min(backoff * 2, 3600)
 
 
 threading.Thread(target=start_healthcheck_server, daemon=True).start()
