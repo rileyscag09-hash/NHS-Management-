@@ -16,7 +16,6 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "0"))
 
-WELCOME_CHANNEL_ID = 1485780276239143006
 VERIFICATION_CHANNEL_ID = 1486873233377460437
 SUPPORT_CHANNEL_ID = 1485794545261219922
 VERIFY_URL = "https://melonly.xyz/verify/7451655967730569216/7451709577638187008"
@@ -304,22 +303,6 @@ async def on_ready() -> None:
     await ensure_verification_message()
 
 
-async def on_member_join(member: discord.Member) -> None:
-    channel = member.guild.get_channel(WELCOME_CHANNEL_ID)
-    if channel is None:
-        try:
-            channel = await bot.fetch_channel(WELCOME_CHANNEL_ID)
-        except discord.DiscordException as exc:
-            logger.warning("Could not fetch welcome channel: %s", exc)
-            return
-
-    if not isinstance(channel, discord.TextChannel):
-        logger.warning("Welcome channel is not a text channel.")
-        return
-
-    await bot.queue_message(channel, embed=welcome_embed(member))
-
-
 @app_commands.default_permissions(manage_guild=True)
 async def verification(interaction: discord.Interaction) -> None:
     if interaction.channel is None:
@@ -465,7 +448,6 @@ if not TOKEN:
 def create_bot() -> NHSBot:
     new_bot = NHSBot()
     new_bot.event(on_ready)
-    new_bot.event(on_member_join)
     new_bot.tree.command(
         name="verification",
         description="Send the verification embed again.",
