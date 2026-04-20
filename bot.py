@@ -15,8 +15,6 @@ load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "0"))
-ERLC_API_KEY = os.getenv("ERLC_API_KEY")
-ADMIN_ROLE_NAME = os.getenv("ADMIN_ROLE_NAME", "Admin")
 
 WELCOME_CHANNEL_ID = 1485780276239143006
 VERIFICATION_CHANNEL_ID = 1486873233377460437
@@ -260,32 +258,6 @@ def moderation_dm_embed(
     return embed
 
 
-def has_admin_role(member: discord.Member) -> bool:
-    return any(role.name == ADMIN_ROLE_NAME for role in member.roles)
-
-
-async def send_erlc_command(command_text: str) -> tuple[int | None, str]:
-    if bot is None or bot.http._HTTPClient__session is None or bot.http._HTTPClient__session.closed:
-        return None, "Discord HTTP session is unavailable."
-
-    if not ERLC_API_KEY:
-        return None, "ERLC_API_KEY is missing."
-
-    url = "https://api.policeroleplay.community/v1/server/command"
-    headers = {
-        "Authorization": ERLC_API_KEY,
-        "Content-Type": "application/json",
-    }
-
-    async with bot.http._HTTPClient__session.post(
-        url,
-        headers=headers,
-        json={"command": command_text},
-    ) as response:
-        body = await response.text()
-        return response.status, body
-
-
 async def ensure_verification_message() -> None:
     if bot.verification_message_checked:
         return
@@ -354,72 +326,6 @@ async def verification(interaction: discord.Interaction) -> None:
     await bot.queue_message(interaction.channel, embed=verification_embed(), view=VerificationView())
     await interaction.response.send_message(
         "Verification message sent.",
-        ephemeral=True,
-    )
-
-
-@app_commands.describe(username="Player username to kick")
-async def erlc_kick(interaction: discord.Interaction, username: str) -> None:
-    if not isinstance(interaction.user, discord.Member) or not has_admin_role(interaction.user):
-        await interaction.response.send_message(
-            f"You need the `{ADMIN_ROLE_NAME}` role to use this command.",
-            ephemeral=True,
-        )
-        return
-
-    await interaction.response.defer(ephemeral=True)
-    status_code, body = await send_erlc_command(f":kick {username}")
-
-    if status_code == 200:
-        await interaction.followup.send(f"Kicked `{username}` from ERLC.", ephemeral=True)
-        return
-
-    await interaction.followup.send(
-        f"Failed to kick `{username}`. API response: `{status_code}` {body[:1500]}",
-        ephemeral=True,
-    )
-
-
-@app_commands.describe(username="Player username to ban")
-async def erlc_ban(interaction: discord.Interaction, username: str) -> None:
-    if not isinstance(interaction.user, discord.Member) or not has_admin_role(interaction.user):
-        await interaction.response.send_message(
-            f"You need the `{ADMIN_ROLE_NAME}` role to use this command.",
-            ephemeral=True,
-        )
-        return
-
-    await interaction.response.defer(ephemeral=True)
-    status_code, body = await send_erlc_command(f":ban {username}")
-
-    if status_code == 200:
-        await interaction.followup.send(f"Banned `{username}` in ERLC.", ephemeral=True)
-        return
-
-    await interaction.followup.send(
-        f"Failed to ban `{username}`. API response: `{status_code}` {body[:1500]}",
-        ephemeral=True,
-    )
-
-
-@app_commands.describe(message="Announcement text to send in ERLC")
-async def erlc_announce(interaction: discord.Interaction, message: str) -> None:
-    if not isinstance(interaction.user, discord.Member) or not has_admin_role(interaction.user):
-        await interaction.response.send_message(
-            f"You need the `{ADMIN_ROLE_NAME}` role to use this command.",
-            ephemeral=True,
-        )
-        return
-
-    await interaction.response.defer(ephemeral=True)
-    status_code, body = await send_erlc_command(f":announce {message}")
-
-    if status_code == 200:
-        await interaction.followup.send("ERLC announcement sent.", ephemeral=True)
-        return
-
-    await interaction.followup.send(
-        f"Failed to send ERLC announcement. API response: `{status_code}` {body[:1500]}",
         ephemeral=True,
     )
 
@@ -566,18 +472,6 @@ def create_bot() -> NHSBot:
         name="ban",
         description="Ban a member from the server.",
     )(ban_member)
-    new_bot.tree.command(
-        name="erlc_kick",
-        description="Kick a player from the connected ERLC server.",
-    )(erlc_kick)
-    new_bot.tree.command(
-        name="erlc_ban",
-        description="Ban a player from the connected ERLC server.",
-    )(erlc_ban)
-    new_bot.tree.command(
-        name="erlc_announce",
-        description="Send an announcement to the connected ERLC server.",
-    )(erlc_announce)
     return new_bot
 
 
