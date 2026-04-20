@@ -310,7 +310,12 @@ async def on_member_join(member: discord.Member) -> None:
         logger.warning("Welcome channel is not a text channel.")
         return
 
-    await bot.queue_message(channel, embed=welcome_embed(member))
+    await bot.queue_message(
+        channel,
+        content=member.mention,
+        embed=welcome_embed(member),
+        allowed_mentions=discord.AllowedMentions(users=True),
+    )
 
 
 @app_commands.default_permissions(manage_guild=True)
