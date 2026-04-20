@@ -1,7 +1,7 @@
+import asyncio
 import logging
 import os
 import threading
-import asyncio
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -16,19 +16,15 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "0"))
 
+WELCOME_CHANNEL_ID = 1495896980935806996
 VERIFICATION_CHANNEL_ID = 1486873233377460437
+RULES_CHANNEL_ID = 1486119499685167204
+APPLY_CHANNEL_ID = 1485793827963932682
 SUPPORT_CHANNEL_ID = 1485794545261219922
 VERIFY_URL = "https://melonly.xyz/verify/7451655967730569216/7451709577638187008"
 
 EMBED_COLOR = discord.Color.from_rgb(22, 163, 74)
 ALERT_COLOR = discord.Color.red()
-
-REACTION_ROLES_LABEL = "🎭・reaction-roles"
-RULES_LABEL = "📖・rules-and-regulations"
-SERVER_INFO_LABEL = "ℹ️・server-information"
-APPLY_LABEL = "📩・apply-here"
-HELP_DESK_LABEL = "🆘・help-desk"
-TICKETS_LABEL = "🎫・tickets"
 
 
 logging.basicConfig(
@@ -83,7 +79,6 @@ class NHSBot(commands.Bot):
         intents = discord.Intents.default()
         intents.members = True
         intents.guilds = True
-        intents.message_content = True
 
         super().__init__(
             command_prefix="!",
@@ -147,7 +142,7 @@ bot: NHSBot | None = None
 
 def verification_embed() -> discord.Embed:
     embed = discord.Embed(
-        title="🛡️ Community Verification & Whitelist",
+        title="Community Verification & Whitelist",
         description=(
             "Welcome to the National Health Service! To ensure a high-quality roleplay "
             "experience and maintain server security, we utilize Melonly for verification "
@@ -159,7 +154,7 @@ def verification_embed() -> discord.Embed:
     embed.add_field(
         name="Verification Steps",
         value=(
-            "1. Click the **Verify Now** button below.\n"
+            "1. Click the Verify Now button below.\n"
             "2. Log in to the Melonly dashboard.\n"
             "3. Link your Roblox and Discord accounts.\n"
             "4. Ensure your Discord username matches your Melonly profile."
@@ -188,11 +183,8 @@ def verification_embed() -> discord.Embed:
 
 def welcome_embed(member: discord.Member) -> discord.Embed:
     embed = discord.Embed(
-        title="🏨 Welcome to National Health Service!",
-        description=(
-            f"Hello, {member.mention}, you've checked into reception please take a seat in the waiting area!\n\n"
-            f"Choose your department in: {REACTION_ROLES_LABEL}"
-        ),
+        title="Welcome to National Health Service",
+        description=f"Hello, {member.mention}, you've checked into reception please take a seat in the waiting area!",
         color=EMBED_COLOR,
         timestamp=datetime.now(timezone.utc),
     )
@@ -200,19 +192,18 @@ def welcome_embed(member: discord.Member) -> discord.Embed:
         name="Get Started",
         value=(
             f"• Verify in <#{VERIFICATION_CHANNEL_ID}>\n"
-            f"• Read {RULES_LABEL}\n"
-            f"• Check {SERVER_INFO_LABEL}"
+            f"• Read <#{RULES_CHANNEL_ID}>"
         ),
         inline=False,
     )
     embed.add_field(
         name="Want to Join Us?",
-        value=f"Apply in {APPLY_LABEL}",
+        value=f"Apply in <#{APPLY_CHANNEL_ID}>",
         inline=False,
     )
     embed.add_field(
         name="Need Help?",
-        value=f"Visit {HELP_DESK_LABEL} or {TICKETS_LABEL}",
+        value=f"Visit <#{SUPPORT_CHANNEL_ID}>",
         inline=False,
     )
     embed.set_footer(text="Enjoy your stay and stay professional. | NHS Management")
@@ -264,7 +255,7 @@ def moderation_dm_embed(
 
 
 async def ensure_verification_message() -> None:
-    if bot.verification_message_checked:
+    if bot is None or bot.verification_message_checked:
         return
 
     channel = bot.get_channel(VERIFICATION_CHANNEL_ID)
@@ -284,7 +275,7 @@ async def ensure_verification_message() -> None:
             if (
                 message.author == bot.user
                 and message.embeds
-                and message.embeds[0].title == "🛡️ Community Verification & Whitelist"
+                and message.embeds[0].title == "Community Verification & Whitelist"
             ):
                 bot.verification_message_checked = True
                 return
@@ -303,9 +294,28 @@ async def on_ready() -> None:
     await ensure_verification_message()
 
 
+async def on_member_join(member: discord.Member) -> None:
+    if bot is None:
+        return
+
+    channel = member.guild.get_channel(WELCOME_CHANNEL_ID)
+    if channel is None:
+        try:
+            channel = await member.guild.fetch_channel(WELCOME_CHANNEL_ID)
+        except discord.DiscordException as exc:
+            logger.warning("Could not fetch welcome channel: %s", exc)
+            return
+
+    if not isinstance(channel, discord.TextChannel):
+        logger.warning("Welcome channel is not a text channel.")
+        return
+
+    await bot.queue_message(channel, embed=welcome_embed(member))
+
+
 @app_commands.default_permissions(manage_guild=True)
 async def verification(interaction: discord.Interaction) -> None:
-    if interaction.channel is None:
+    if interaction.channel is None or bot is None:
         await interaction.response.send_message(
             "This command can only be used in a server.",
             ephemeral=True,
@@ -448,6 +458,7 @@ if not TOKEN:
 def create_bot() -> NHSBot:
     new_bot = NHSBot()
     new_bot.event(on_ready)
+    new_bot.event(on_member_join)
     new_bot.tree.command(
         name="verification",
         description="Send the verification embed again.",
