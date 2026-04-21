@@ -516,20 +516,18 @@ def build_action_embed(title: str, description: str, reason: str) -> discord.Emb
 
 
 def support_panel_embeds() -> list[discord.Embed]:
-    main_embed = discord.Embed(
+    panel_embed = discord.Embed(
+        title="NHS Support",
         description="```Open a support ticket and It will be escalated to the required\ndepartment and people.```",
         color=discord.Color.from_rgb(49, 51, 56),
         timestamp=datetime.now(timezone.utc),
     )
-    main_embed.set_author(
-        name="NHS Support",
-        icon_url="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/National_Health_Service_%28England%29_logo.svg/320px-National_Health_Service_%28England%29_logo.svg.png",
-    )
-    main_embed.set_image(url="attachment://top-image.png")
+    panel_embed.set_image(url="attachment://top-image.png")
+    panel_embed.set_footer(text="National Health Service Support")
 
-    bottom_embed = discord.Embed(color=discord.Color.from_rgb(49, 51, 56))
-    bottom_embed.set_image(url="attachment://bottom-image.png")
-    return [main_embed, bottom_embed]
+    banner_embed = discord.Embed(color=discord.Color.from_rgb(49, 51, 56))
+    banner_embed.set_image(url="attachment://bottom-image.png")
+    return [panel_embed, banner_embed]
 
 
 def ticket_created_embed(member: discord.Member, guild_name: str, issue: str) -> discord.Embed:
@@ -559,9 +557,9 @@ def ticket_created_embed(member: discord.Member, guild_name: str, issue: str) ->
 def support_panel_files() -> list[discord.File]:
     files: list[discord.File] = []
     if TOP_IMAGE_PATH.exists():
-        files.append(discord.File(TOP_IMAGE_PATH, filename="top-image.png"))
+        files.append(discord.File(str(TOP_IMAGE_PATH), filename="top-image.png"))
     if BOTTOM_IMAGE_PATH.exists():
-        files.append(discord.File(BOTTOM_IMAGE_PATH, filename="bottom-image.png"))
+        files.append(discord.File(str(BOTTOM_IMAGE_PATH), filename="bottom-image.png"))
     return files
 
 
