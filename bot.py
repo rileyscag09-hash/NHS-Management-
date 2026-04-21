@@ -515,23 +515,21 @@ def build_action_embed(title: str, description: str, reason: str) -> discord.Emb
     return embed
 
 
-def support_panel_embed() -> discord.Embed:
-    embed = discord.Embed(
-        title=SUPPORT_PANEL_TITLE,
-        description="Open a support ticket and it will be escalated to the required department and people.",
-        color=EMBED_COLOR,
+def support_panel_embeds() -> list[discord.Embed]:
+    main_embed = discord.Embed(
+        description="```Open a support ticket and It will be escalated to the required\ndepartment and people.```",
+        color=discord.Color.from_rgb(49, 51, 56),
         timestamp=datetime.now(timezone.utc),
     )
-    embed.add_field(
-        name="Need help?",
-        value="Press the button below to open a private support ticket with the NHS team.",
-        inline=False,
+    main_embed.set_author(
+        name="NHS Support",
+        icon_url="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/National_Health_Service_%28England%29_logo.svg/320px-National_Health_Service_%28England%29_logo.svg.png",
     )
-    embed.set_author(name="NHS Support")
-    embed.set_image(url="attachment://top-image.png")
-    embed.set_thumbnail(url="attachment://bottom-image.png")
-    embed.set_footer(text="National Health Service Support")
-    return embed
+    main_embed.set_image(url="attachment://top-image.png")
+
+    bottom_embed = discord.Embed(color=discord.Color.from_rgb(49, 51, 56))
+    bottom_embed.set_image(url="attachment://bottom-image.png")
+    return [main_embed, bottom_embed]
 
 
 def ticket_created_embed(member: discord.Member, guild_name: str, issue: str) -> discord.Embed:
@@ -844,7 +842,6 @@ async def on_member_join(member: discord.Member) -> None:
     )
 
 
-@app_commands.default_permissions(manage_guild=True)
 async def verification(interaction: discord.Interaction) -> None:
     if interaction.channel is None or bot is None:
         await interaction.response.send_message(
@@ -860,7 +857,6 @@ async def verification(interaction: discord.Interaction) -> None:
     )
 
 
-@app_commands.default_permissions(manage_guild=True)
 async def support(interaction: discord.Interaction) -> None:
     if bot is None:
         await interaction.response.send_message(
@@ -885,7 +881,7 @@ async def support(interaction: discord.Interaction) -> None:
         return
 
     payload = {
-        "embed": support_panel_embed(),
+        "embeds": support_panel_embeds(),
         "view": OpenTicketView(),
     }
     files = support_panel_files()
@@ -896,6 +892,11 @@ async def support(interaction: discord.Interaction) -> None:
         f"Support panel sent in {channel.mention}.",
         ephemeral=True,
     )
+
+
+@app_commands.default_permissions(manage_guild=True)
+async def support_command(interaction: discord.Interaction) -> None:
+    await support(interaction)
 
 
 async def esculate(interaction: discord.Interaction) -> None:
@@ -927,7 +928,13 @@ async def esculate(interaction: discord.Interaction) -> None:
     )
 
 
+@app_commands.default_permissions()
+async def esculate_command(interaction: discord.Interaction) -> None:
+    await esculate(interaction)
+
+
 @app_commands.describe(reason="Reason for closing the ticket")
+@app_commands.default_permissions()
 async def close(interaction: discord.Interaction, reason: str) -> None:
     await close_ticket_channel(interaction, reason)
 
@@ -1069,11 +1076,11 @@ def create_bot() -> NHSBot:
     new_bot.tree.command(
         name="support",
         description="Send the support ticket panel.",
-    )(support)
+    )(support_command)
     new_bot.tree.command(
         name="esculate",
         description="Move a ticket into a different escalation category.",
-    )(esculate)
+    )(esculate_command)
     new_bot.tree.command(
         name="close",
         description="Close a ticket and send the transcript.",
