@@ -3,7 +3,7 @@
 Small Discord bot for your NHS server with:
 
 - Welcome embeds in channel `1485780276239143006`
-- Kick and ban slash commands with DM embeds
+- Kick and ban slash commands with DM embeds, restricted to server administrators
 - Verification embed with a Melonly button in channel `1486873233377460437`
 
 ## Setup
@@ -65,7 +65,11 @@ Also enable these privileged intents in the Discord Developer Portal:
 
 - `/kick`
 - `/ban`
+- `/application`
 - `/verification`
+
+`/kick` and `/ban` are limited to members with the Discord `Administrator` permission.
+`/application` sends the application panel with the Hospital Staff and NWAS application links.
 
 ## Notes
 
