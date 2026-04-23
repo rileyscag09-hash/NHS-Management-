@@ -48,11 +48,15 @@ logging.basicConfig(
 logger = logging.getLogger("nhs-bot")
 
 BASE_DIR = Path(__file__).resolve().parent
-TOP_IMAGE_PATH = BASE_DIR / "photos" / "Top image.png"
-BOTTOM_IMAGE_PATH = BASE_DIR / "photos" / "Bottom image.png"
+PHOTOS_DIR = BASE_DIR / "Photos"
+TOP_IMAGE_PATH = PHOTOS_DIR / "Support Embed Top Image.png"
+APPLICATION_TOP_IMAGE_PATH = PHOTOS_DIR / "Application Embed Top Image.png"
+BOTTOM_IMAGE_PATH = PHOTOS_DIR / "Embed Bottom Image.png"
 SUPPORT_PANEL_TITLE = "NHS Support"
 TICKET_TOPIC_PREFIX = "ticket_owner:"
 TICKET_REASON_PREFIX = "reason:"
+HOSPITAL_APPLICATION_URL = "https://melon.ly/form/7452110262565343232"
+NWAS_APPLICATION_URL = "https://melon.ly/form/7452116959954472960"
 
 
 def is_cloudflare_rate_limit_error(exc: discord.HTTPException) -> bool:
@@ -112,6 +116,27 @@ class OpenTicketView(discord.ui.View):
         del button
 
         await interaction.response.send_modal(OpenTicketModal())
+
+
+class ApplicationView(discord.ui.View):
+    def __init__(self) -> None:
+        super().__init__(timeout=None)
+        self.add_item(
+            discord.ui.Button(
+                label="🏥 Application",
+                url=HOSPITAL_APPLICATION_URL,
+                style=discord.ButtonStyle.link,
+                row=0,
+            )
+        )
+        self.add_item(
+            discord.ui.Button(
+                label="🚑 Application",
+                url=NWAS_APPLICATION_URL,
+                style=discord.ButtonStyle.link,
+                row=1,
+            )
+        )
 
 
 class OpenTicketModal(discord.ui.Modal, title="Open Support Ticket"):
@@ -530,6 +555,30 @@ def support_panel_embeds() -> list[discord.Embed]:
     return [panel_embed, banner_embed]
 
 
+def application_panel_embeds() -> list[discord.Embed]:
+    panel_embed = discord.Embed(
+        description=(
+            "** # `🏥`Hospital Staff Application **\n"
+            "*Step in, make a difference, save lives.*\n\n"
+            "──────────────\n\n"
+            "** # `🚑` NWAS Application **\n"
+            "*Every second counts—be the one who makes it count.*"
+        ),
+        color=discord.Color.from_rgb(49, 51, 56),
+        timestamp=datetime.now(timezone.utc),
+    )
+    panel_embed.set_image(url="attachment://application-top-image.png")
+
+    separator_embed = discord.Embed(
+        description="──────────────",
+        color=discord.Color.from_rgb(49, 51, 56),
+    )
+
+    banner_embed = discord.Embed(color=discord.Color.from_rgb(49, 51, 56))
+    banner_embed.set_image(url="attachment://bottom-image.png")
+    return [panel_embed, separator_embed, banner_embed]
+
+
 def ticket_created_embed(member: discord.Member, guild_name: str, issue: str) -> discord.Embed:
     embed = discord.Embed(
         title="Support Ticket Opened",
@@ -558,6 +607,17 @@ def support_panel_files() -> list[discord.File]:
     files: list[discord.File] = []
     if TOP_IMAGE_PATH.exists():
         files.append(discord.File(str(TOP_IMAGE_PATH), filename="top-image.png"))
+    if BOTTOM_IMAGE_PATH.exists():
+        files.append(discord.File(str(BOTTOM_IMAGE_PATH), filename="bottom-image.png"))
+    return files
+
+
+def application_panel_files() -> list[discord.File]:
+    files: list[discord.File] = []
+    if APPLICATION_TOP_IMAGE_PATH.exists():
+        files.append(
+            discord.File(str(APPLICATION_TOP_IMAGE_PATH), filename="application-top-image.png")
+        )
     if BOTTOM_IMAGE_PATH.exists():
         files.append(discord.File(str(BOTTOM_IMAGE_PATH), filename="bottom-image.png"))
     return files
@@ -892,9 +952,51 @@ async def support(interaction: discord.Interaction) -> None:
     )
 
 
+async def application(interaction: discord.Interaction) -> None:
+    if bot is None:
+        await interaction.response.send_message(
+            "This command can only be used in a server.",
+            ephemeral=True,
+        )
+        return
+
+    channel = interaction.guild.get_channel(APPLY_CHANNEL_ID) if interaction.guild else None
+    if channel is None and interaction.guild is not None:
+        try:
+            channel = await interaction.guild.fetch_channel(APPLY_CHANNEL_ID)
+        except discord.DiscordException as exc:
+            logger.warning("Could not fetch application channel: %s", exc)
+            channel = None
+
+    if not isinstance(channel, discord.TextChannel):
+        await interaction.response.send_message(
+            "I couldn't find the configured application channel.",
+            ephemeral=True,
+        )
+        return
+
+    payload = {
+        "embeds": application_panel_embeds(),
+        "view": ApplicationView(),
+    }
+    files = application_panel_files()
+    if files:
+        payload["files"] = files
+    await bot.queue_message(channel, **payload)
+    await interaction.response.send_message(
+        f"Application panel sent in {channel.mention}.",
+        ephemeral=True,
+    )
+
+
 @app_commands.default_permissions(manage_guild=True)
 async def support_command(interaction: discord.Interaction) -> None:
     await support(interaction)
+
+
+@app_commands.default_permissions(manage_guild=True)
+async def application_command(interaction: discord.Interaction) -> None:
+    await application(interaction)
 
 
 async def esculate(interaction: discord.Interaction) -> None:
@@ -938,7 +1040,7 @@ async def close(interaction: discord.Interaction, reason: str) -> None:
 
 
 @app_commands.describe(member="Member to kick", reason="Reason for the kick")
-@app_commands.default_permissions(kick_members=True)
+@app_commands.default_permissions(administrator=True)
 async def kick_member(
     interaction: discord.Interaction,
     member: discord.Member,
@@ -959,6 +1061,13 @@ async def kick_member(
         return
 
     moderator = interaction.user if isinstance(interaction.user, discord.Member) else None
+    if moderator is None or not moderator.guild_permissions.administrator:
+        await interaction.response.send_message(
+            "Only server administrators can use this command.",
+            ephemeral=True,
+        )
+        return
+
     bot_member = get_guild_bot_member(interaction.guild)
 
     if moderator and member.top_role >= moderator.top_role and interaction.guild.owner_id != moderator.id:
@@ -999,7 +1108,7 @@ async def kick_member(
 
 
 @app_commands.describe(member="Member to ban", reason="Reason for the ban")
-@app_commands.default_permissions(ban_members=True)
+@app_commands.default_permissions(administrator=True)
 async def ban_member(
     interaction: discord.Interaction,
     member: discord.Member,
@@ -1020,6 +1129,13 @@ async def ban_member(
         return
 
     moderator = interaction.user if isinstance(interaction.user, discord.Member) else None
+    if moderator is None or not moderator.guild_permissions.administrator:
+        await interaction.response.send_message(
+            "Only server administrators can use this command.",
+            ephemeral=True,
+        )
+        return
+
     bot_member = get_guild_bot_member(interaction.guild)
 
     if moderator and member.top_role >= moderator.top_role and interaction.guild.owner_id != moderator.id:
@@ -1075,6 +1191,10 @@ def create_bot() -> NHSBot:
         name="support",
         description="Send the support ticket panel.",
     )(support_command)
+    new_bot.tree.command(
+        name="application",
+        description="Send the applications panel.",
+    )(application_command)
     new_bot.tree.command(
         name="esculate",
         description="Move a ticket into a different escalation category.",
