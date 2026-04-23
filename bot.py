@@ -123,7 +123,8 @@ class ApplicationView(discord.ui.View):
         super().__init__(timeout=None)
         self.add_item(
             discord.ui.Button(
-                label="🏥 Application",
+                label="Application",
+                emoji="🏥",
                 url=HOSPITAL_APPLICATION_URL,
                 style=discord.ButtonStyle.link,
                 row=0,
@@ -131,7 +132,8 @@ class ApplicationView(discord.ui.View):
         )
         self.add_item(
             discord.ui.Button(
-                label="🚑 Application",
+                label="Application",
+                emoji="🚑",
                 url=NWAS_APPLICATION_URL,
                 style=discord.ButtonStyle.link,
                 row=1,
@@ -557,26 +559,28 @@ def support_panel_embeds() -> list[discord.Embed]:
 
 def application_panel_embeds() -> list[discord.Embed]:
     panel_embed = discord.Embed(
-        description=(
-            "** # `🏥`Hospital Staff Application **\n"
-            "*Step in, make a difference, save lives.*\n\n"
-            "──────────────\n\n"
-            "** # `🚑` NWAS Application **\n"
-            "*Every second counts—be the one who makes it count.*"
-        ),
         color=discord.Color.from_rgb(49, 51, 56),
-        timestamp=datetime.now(timezone.utc),
     )
     panel_embed.set_image(url="attachment://application-top-image.png")
-
-    separator_embed = discord.Embed(
-        description="──────────────",
-        color=discord.Color.from_rgb(49, 51, 56),
+    panel_embed.add_field(
+        name="🏥 Hospital Staff Application",
+        value="*Step in, make a difference, save lives.*",
+        inline=False,
+    )
+    panel_embed.add_field(
+        name="\u200b",
+        value="──────────────",
+        inline=False,
+    )
+    panel_embed.add_field(
+        name="🚑 NWAS Application",
+        value="*Every second counts—be the one who makes it count.*",
+        inline=False,
     )
 
     banner_embed = discord.Embed(color=discord.Color.from_rgb(49, 51, 56))
     banner_embed.set_image(url="attachment://bottom-image.png")
-    return [panel_embed, separator_embed, banner_embed]
+    return [panel_embed, banner_embed]
 
 
 def ticket_created_embed(member: discord.Member, guild_name: str, issue: str) -> discord.Embed:
